@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>討論區</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<canvas id="geo-bg-canvas"></canvas>
+<canvas id="sakura-bg-canvas"></canvas>
+<input type="hidden" id="auto-room" th:value="${autoRoom}">
+<input type="hidden" id="auto-nickname" th:value="${autoNickname}">
+
+<!-- 1. Nickname screen -->
+<div id="nickname-container">
+    <h2>討論區</h2>
+    <p>請輸入你的暱稱以加入</p>
+    <div id="nickname-input-area">
+        <input type="text" id="nickname-input" placeholder="輸入暱稱..." onkeypress="if(event.key === 'Enter') joinLobby()">
+        <button onclick="joinLobby()">加入</button>
+    </div>
+</div>
+
+<!-- 2. Lobby screen -->
+<div id="lobby-wrapper" style="display: none;">
+    <div id="lobby-container">
+        <h2>討論區大廳</h2>
+        <p>歡迎, <span id="lobby-nickname"></span></p>
+
+        <div id="lobby-toolbar">
+            <input type="text" id="room-search-input" placeholder="輸入名稱查詢討論區..." oninput="filterRoomList()">
+            <button id="create-room-btn" onclick="toggleCreateRoomModal()">＋ 建立討論區</button>
+        </div>
+        <div id="create-room-error" style="display: none;"></div>
+
+        <div id="room-list"></div>
+    </div>
+</div>
+
+<!-- Create Room Modal -->
+<div id="create-room-overlay" style="display:none;" onclick="if(event.target===this)toggleCreateRoomModal()">
+    <div id="create-room-modal">
+        <div id="create-room-modal-header">
+            <h3>建立討論區</h3>
+            <button onclick="toggleCreateRoomModal()" class="modal-close-btn">&times;</button>
+        </div>
+        <div id="create-room-modal-body">
+            <div id="create-room-type-tabs">
+                <button class="create-tab active" onclick="switchCreateTab('ticket')">Ticket 討論區</button>
+                <button class="create-tab" onclick="switchCreateTab('general')">Normal 討論區</button>
+                <button class="create-tab" onclick="switchCreateTab('gacha')">一番賞抽獎 討論區</button>
+            </div>
+            <div id="create-ticket-area" class="create-modal-area">
+                <label>Redmine 單號</label>
+                <input type="text" id="ticket-number-input" placeholder="例: 1234" onkeypress="if(event.key === 'Enter') createTicketRoom()">
+                <button onclick="createTicketRoom()">建立 Ticket 討論區</button>
+            </div>
+            <div id="create-general-area" class="create-modal-area" style="display: none;">
+                <label>討論區名稱</label>
+                <input type="text" id="general-name-input" placeholder="輸入討論區名稱" onkeypress="if(event.key === 'Enter') createGeneralRoom()">
+                <button onclick="createGeneralRoom()">建立 Normal 討論區</button>
+            </div>
+            <div id="create-gacha-area" class="create-modal-area" style="display: none;">
+                <label>抽獎活動名稱</label>
+                <input type="text" id="gacha-room-name-input" placeholder="輸入一番賞活動名稱" onkeypress="if(event.key === 'Enter') createGachaRoom()">
+                <button onclick="createGachaRoom()">建立一番賞抽獎討論區</button>
+            </div>
+            <div id="create-room-modal-error"></div>
+        </div>
+    </div>
+</div>
+
+<!-- 3. Room screen -->
+<div id="chat-wrapper" style="display: none;">
+    <div id="chat-container">
+        <div id="chat-header">
+            <button id="back-btn" onclick="leaveRoom()">&#8592; 返回大廳</button>
+            <h2 id="room-title"></h2>
+        </div>
+
+        <!-- Room tabs -->
+        <div id="room-tabs">
+            <button class="room-tab active" onclick="switchRoomTab('chat')">討論</button>
+            <button class="room-tab" onclick="switchRoomTab('poll')">投票</button>
+            <button class="room-tab" onclick="switchRoomTab('calendar')">行事曆</button>
+            <button class="room-tab" onclick="switchRoomTab('lottery')">樂透選</button>
+            <button class="room-tab" onclick="switchRoomTab('canvas')">畫布</button>
+            <button class="room-tab" onclick="switchRoomTab('fortune')">運勢</button>
+            <button class="room-tab" onclick="switchRoomTab('gacha')">抽賞</button>
+        </div>
+
+        <div id="main-area">
+            <!-- Left content area -->
+            <div id="content-area">
+                <!-- Chat tab -->
+                <div id="tab-chat" class="tab-content active">
+                    <div id="message-area"></div>
+                    <div id="emoji-picker" style="display: none;"></div>
+                    <div id="mention-dropdown" style="display: none;"></div>
+                    <div id="tips-panel" style="display: none;">
+                        <div class="tips-title">輸入提示</div>
+                        <div class="tips-section">
+                            <div class="tips-subtitle">提及使用者</div>
+                            <div class="tips-row"><code>@暱稱</code> — 標記討論區內的使用者</div>
+                        </div>
+                        <div class="tips-section">
+                            <div class="tips-subtitle">Markdown 語法</div>
+                            <div class="tips-row"><code>**粗體**</code> — <strong>粗體</strong></div>
+                            <div class="tips-row"><code>*斜體*</code> — <em>斜體</em></div>
+                            <div class="tips-row"><code>~~刪除線~~</code> — <del>刪除線</del></div>
+                            <div class="tips-row"><code>`程式碼`</code> — <code>程式碼</code></div>
+                            <div class="tips-row"><code>[文字](網址)</code> — 超連結</div>
+                        </div>
+                    </div>
+                    <div id="input-area">
+                        <button id="emoji-btn" onclick="toggleEmojiPicker()" title="表情符號" type="button">&#128522;</button>
+                        <button id="upload-img-btn" onclick="document.getElementById('image-upload').click()" title="上傳貼圖" type="button">&#128247;</button>
+                        <button id="tips-btn" onclick="toggleTipsPanel()" title="輸入提示" type="button">&#9432;</button>
+                        <input type="file" id="image-upload" accept="image/*" style="display:none" onchange="uploadImage(this)">
+                        <input type="text" id="message-input" placeholder="輸入訊息後按 Enter 發送... (@提及使用者)" onkeypress="if(event.key === 'Enter' && !mentionActive) sendMessage()">
+                        <button onclick="sendMessage()">Send</button>
+                        <button id="memo-btn" onclick="saveMemo()" style="display:none;" title="記錄 Memo">📝 Memo</button>
+                        <button id="download-chat-btn" onclick="downloadChat()" style="display: none;" title="下載討論紀錄">&#11123; 下載</button>
+                    </div>
+                    <div id="memo-list"></div>
+                </div>
+
+                <!-- Memo preview modal -->
+                <div id="memo-preview-modal" style="display:none;" onclick="if(event.target===this)closeMemoPreview()">
+                    <div id="memo-preview-inner">
+                        <div id="memo-preview-header">
+                            <span id="memo-preview-meta"></span>
+                            <button onclick="closeMemoPreview()" class="modal-close-btn">&times;</button>
+                        </div>
+                        <div id="memo-preview-text"></div>
+                        <div id="memo-preview-footer">
+                            <button onclick="copyMemo()">📋 複製</button>
+                            <span id="memo-copy-status"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Poll tab -->
+                <div id="tab-poll" class="tab-content">
+                    <div id="create-poll-area">
+                        <input type="text" id="poll-question" placeholder="投票問題">
+                        <input type="text" id="poll-options" placeholder="選項 (用逗號分隔, 例: A,B,C)">
+                        <button onclick="createPoll()">發起投票</button>
+                    </div>
+                    <div id="poll-list"></div>
+                </div>
+
+                <!-- Calendar tab -->
+                <div id="tab-calendar" class="tab-content">
+                    <div id="create-event-area">
+                        <input type="text" id="event-title" placeholder="事件標題">
+                        <input type="date" id="event-date">
+                        <input type="time" id="event-time">
+                        <button onclick="addCalendarEvent()">新增事件</button>
+                    </div>
+                    <div id="calendar-list"></div>
+                </div>
+
+                <!-- Lottery tab -->
+                <div id="tab-lottery" class="tab-content">
+                    <div id="lottery-input-area">
+                        <input type="text" id="lottery-options" placeholder="輸入選項 (用逗號分隔, 至少兩個, 例: 小明,小華,小美)">
+                        <button onclick="drawLottery()">抽！</button>
+                    </div>
+                    <div id="lottery-wheel-overlay" style="display:none;">
+                        <div id="lottery-wheel-container">
+                            <div id="wheel-pointer">▼</div>
+                            <canvas id="lottery-wheel-canvas" width="300" height="300"></canvas>
+                            <div id="wheel-result-text" style="display:none;"></div>
+                        </div>
+                    </div>
+                    <div id="lottery-history"></div>
+                </div>
+
+                <!-- Canvas tab -->
+                <div id="tab-canvas" class="tab-content">
+                    <div id="canvas-toolbar">
+                        <label>顏色: <input type="color" id="canvas-color" value="#000000"></label>
+                        <label>粗細: <input type="range" id="canvas-width" min="1" max="20" value="3"></label>
+                        <button id="eraser-btn" onclick="toggleEraser()">橡皮擦</button>
+                        <button onclick="clearCanvas()">清除畫布</button>
+                        <button onclick="saveCanvasSnapshot()">💾 儲存畫布</button>
+                        <button onclick="randomLineArt()">🎲 隨機線圖</button>
+                    </div>
+                    <canvas id="shared-canvas" width="590" height="380"></canvas>
+                    <div id="canvas-snapshots"></div>
+                </div>
+
+                <!-- Canvas preview modal -->
+                <div id="canvas-preview-modal" style="display:none;" onclick="if(event.target===this)closeCanvasPreview()">
+                    <div id="canvas-preview-inner">
+                        <img id="canvas-preview-img" src="" alt="preview">
+                        <div id="canvas-preview-actions">
+                            <button onclick="downloadSnapshot()">📥 下載成圖片</button>
+                            <button onclick="restoreSnapshot()">🔄 重現畫布</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Fortune tab -->
+                <div id="tab-fortune" class="tab-content">
+                    <div id="fortune-area">
+                        <div id="fortune-top-row">
+                            <div id="fortune-container">
+                                <div id="fortune-tube">
+                                    <div id="fortune-sticks">
+                                        <div class="fortune-stick-deco"></div>
+                                        <div class="fortune-stick-deco"></div>
+                                        <div class="fortune-stick-deco"></div>
+                                        <div class="fortune-stick-deco"></div>
+                                        <div class="fortune-stick-deco"></div>
+                                    </div>
+                                    <div id="fortune-tube-body"></div>
+                                </div>
+                                <button id="fortune-draw-btn" onclick="drawFortune()">🙏 抽籤</button>
+                            </div>
+                            <div id="fortune-stick-out" style="display:none;"></div>
+                        </div>
+                        <div id="fortune-card" style="display:none;">
+                            <div id="fortune-number"></div>
+                            <div id="fortune-type"></div>
+                            <div id="fortune-poem"></div>
+                            <div id="fortune-interp"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Gacha tab -->
+                <div id="tab-gacha" class="tab-content">
+                    <div id="gacha-create-area">
+                        <h4>建立抽賞</h4>
+                        <input type="text" id="gacha-pool-name" placeholder="抽賞名稱">
+                        <div id="gacha-prize-inputs">
+                            <div class="gacha-prize-row">
+                                <input type="text" placeholder="獎賞名稱" class="prize-name">
+                                <input type="number" placeholder="數量" class="prize-qty" min="1" value="1">
+                                <button class="prize-remove-btn" onclick="removePrizeRow(this)" title="移除">✕</button>
+                            </div>
+                        </div>
+                        <button class="gacha-add-prize-btn" onclick="addPrizeRow()">＋ 新增獎賞</button>
+                        <div class="gacha-ip-limit-row">
+                            <label>每 IP 抽獎上限：</label>
+                            <input type="number" id="gacha-ip-limit" min="0" value="0">
+                            <span class="gacha-limit-hint">（0 = 無限制）</span>
+                        </div>
+                        <button class="gacha-create-btn" onclick="createGachaPool()">建立抽賞</button>
+                    </div>
+                    <div id="gacha-pool-list"></div>
+
+                    <!-- Gacha detail modal -->
+                    <div id="gacha-detail-overlay" style="display:none;" onclick="if(event.target===this)closeGachaDetail()">
+                        <div id="gacha-detail-modal">
+                            <h3 id="gacha-detail-title"></h3>
+                            <p id="gacha-detail-creator"></p>
+                            <p id="gacha-detail-limit"></p>
+                            <table id="gacha-detail-prizes"><thead><tr><th>獎賞</th><th>總數</th><th>剩餘</th></tr></thead><tbody></tbody></table>
+                            <div id="gacha-detail-actions">
+                                <button onclick="drawGacha()" id="gacha-draw-btn">🎰 抽！</button>
+                                <button onclick="deleteGachaPool()" id="gacha-delete-btn" style="display:none;">🗑 刪除</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Gacha animation overlay -->
+                    <div id="gacha-animation-overlay" style="display:none;">
+                        <div id="gacha-animation-box">
+                            <div id="gacha-ball-container"></div>
+                        </div>
+                        <div id="gacha-result-text" style="display:none;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right panel: user list -->
+            <div id="user-list-panel">
+                <div id="ticket-url-display" style="display: none;">
+                    <a id="room-ticket-link" href="#" target="_blank"></a>
+                </div>
+                <h3>線上使用者</h3>
+                <ul id="user-list"></ul>
+                <p class="user-list-hint">點擊名稱可以進行互動</p>
+                <div id="invite-section">
+                    <h4>🔗 邀請加入</h4>
+                    <input type="text" id="invite-emails" placeholder="輸入 Email，以逗號分隔">
+                    <button onclick="generateInviteLinks()">產生邀請連結</button>
+                    <div id="invite-links" style="display: none;"></div>
+                    <button id="copy-all-btn" onclick="copyAllInviteLinks()" style="display: none;">一鍵複製全部</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- User interaction menu -->
+<div id="user-action-menu" style="display: none;">
+    <div id="user-action-target"></div>
+    <div id="user-action-buttons">
+        <button onclick="userAction('hi')">👋 打招呼</button>
+        <button onclick="userAction('handshake')">🤝 握手</button>
+        <button onclick="userAction('love')">❤️ 愛心</button>
+        <button onclick="userAction('angry')">😠 抗拒</button>
+        <button onclick="userAction('poke')">👉 戳</button>
+        <button onclick="showRpsChoice()">🎮 猜拳</button>
+    </div>
+    <div id="rps-choice-area" style="display: none;">
+        <div class="rps-prompt">選擇你的出拳：</div>
+        <div class="rps-buttons">
+            <button onclick="sendRpsChallenge('scissors')">✌️ 剪刀</button>
+            <button onclick="sendRpsChallenge('rock')">✊ 石頭</button>
+            <button onclick="sendRpsChallenge('paper')">✋ 布</button>
+        </div>
+    </div>
+</div>
+
+<!-- RPS challenge popup -->
+<div id="rps-challenge-popup" style="display: none;">
+    <div class="rps-challenge-text">🎮 <span id="rps-challenger-name"></span> 向你發起了猜拳！</div>
+    <div class="rps-buttons">
+        <button onclick="respondRps('scissors')">✌️ 剪刀</button>
+        <button onclick="respondRps('rock')">✊ 石頭</button>
+        <button onclick="respondRps('paper')">✋ 布</button>
+    </div>
+</div>
+
+<!-- Off-work animation overlay -->
+<div id="offwork-overlay" style="display:none;" onclick="exitOffworkMode()">
+    <div id="offwork-scene">
+        <!-- Scene 1: Office -->
+        <div id="ow-office">🏢</div>
+        <div id="ow-person">🚶</div>
+        <!-- Scene 2: Airplane -->
+        <div id="ow-airplane">✈️</div>
+        <!-- Scene 3: Hawaii -->
+        <div id="ow-hawaii">
+            <div id="ow-sky">
+                <div class="ow-cloud ow-cloud1">☁️</div>
+                <div class="ow-cloud ow-cloud2">☁️</div>
+                <div class="ow-cloud ow-cloud3">⛅</div>
+                <div id="ow-sun">☀️</div>
+            </div>
+            <div id="ow-beach">
+                <div id="ow-palm1">🌴</div>
+                <div id="ow-palm2">🌴</div>
+                <div id="ow-person-relax">🏖️</div>
+                <div id="ow-drink">🍹</div>
+            </div>
+            <div id="ow-ocean">
+                <div class="ow-wave">🌊🌊🌊🌊🌊🌊🌊🌊🌊🌊</div>
+                <div class="ow-wave ow-wave2">🌊🌊🌊🌊🌊🌊🌊🌊🌊🌊</div>
+            </div>
+        </div>
+        <div id="ow-text"></div>
+    </div>
+</div>
+
+<!-- Bottom-right buttons area -->
+<div id="bottom-right-area">
+    <button id="offwork-btn" onclick="startOffworkMode()">🏖️ 下班模式</button>
+    <button id="relax-btn" onclick="toggleRelaxMode()">😌 放鬆模式</button>
+    <div id="theme-menu-container">
+        <div id="theme-menu" style="display:none;">
+            <div class="theme-option" data-theme="purple" onclick="setTheme('purple')">💜 寧靜主題</div>
+            <div class="theme-option" data-theme="fire" onclick="setTheme('fire')">🔥 火焰主題</div>
+            <div class="theme-option" data-theme="grass" onclick="setTheme('grass')">🌿 青草主題</div>
+            <div class="theme-option" data-theme="wave" onclick="setTheme('wave')">🌊 浪花主題</div>
+            <div class="theme-option" data-theme="geo" onclick="setTheme('geo')">🔷 幾何主題</div>
+            <div class="theme-option" data-theme="sakura" onclick="setTheme('sakura')">🌸 櫻花綻放</div>
+        </div>
+        <button id="theme-toggle-btn" onclick="toggleThemeMenu()">🎨 主題切換</button>
+    </div>
+    <button id="dev-history-btn" onclick="toggleDevHistory()">📖 開發歷程</button>
+</div>
+<div id="dev-history-overlay" style="display:none;" onclick="if(event.target===this)toggleDevHistory()">
+    <div id="dev-history-modal">
+        <div id="dev-history-header">
+            <h2>📋 討論區 — 開發歷程</h2>
+            <button onclick="toggleDevHistory()" class="dev-history-close">&times;</button>
+        </div>
+        <div id="dev-history-content">
+
+            <div class="dev-day">
+                <h3>🏗️ Day 1 — 核心功能建立</h3>
+
+                <div class="dev-section">
+                    <h4>討論基礎</h4>
+                    <ul>
+                        <li>暱稱輸入 → 大廳 → 討論區 三層畫面切換</li>
+                        <li>WebSocket (STOMP over SockJS) 即時訊息收發</li>
+                        <li>斷線通知、線上使用者 IP + 暱稱列表</li>
+                    </ul>
+                </div>
+
+                <div class="dev-section">
+                    <h4>多討論區大廳系統</h4>
+                    <ul>
+                        <li><strong>Ticket 討論區</strong> — 輸入 Redmine 單號，自動組成 URL</li>
+                        <li><strong>Normal 討論區</strong> — 自訂名稱</li>
+                        <li>重複單號檢查、建立後自動加入</li>
+                        <li>空討論區自動刪除（含所有關聯資料）</li>
+                    </ul>
+                </div>
+
+                <div class="dev-section">
+                    <h4>討論區內功能 Tabs</h4>
+                    <ul>
+                        <li>💬 <strong>討論</strong> — Markdown 渲染、@提及使用者、表情符號選擇器、圖片上傳貼圖</li>
+                        <li>🗳️ <strong>投票</strong> — 發起投票、單次投票限制、即時票數長條圖</li>
+                        <li>📅 <strong>行事曆</strong> — 新增/刪除事件、依日期排序</li>
+                        <li>🎰 <strong>樂透選</strong> — 輸入選項隨機抽選</li>
+                        <li>🎨 <strong>畫布</strong> — 多人共同塗鴉、顏色/粗細選擇</li>
+                    </ul>
+                </div>
+
+                <div class="dev-section">
+                    <h4>資料同步機制</h4>
+                    <ul>
+                        <li>RoomHistoryService 累積討論紀錄、樂透結果、畫布筆跡</li>
+                        <li>新加入者自動收到所有歷史資料</li>
+                        <li>投票/行事曆/樂透更新同步顯示系統訊息到討論區</li>
+                        <li>Tab 未讀徽章計數，切換後清除</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="dev-day">
+                <h3>📌 Day 2 — 互動與增強功能</h3>
+
+                <div class="dev-section">
+                    <h4>使用者互動系統</h4>
+                    <ul>
+                        <li>點擊名單彈出互動選單：👋 打招呼、🤝 握手、❤️ 愛心、😠 抗拒、👉 戳</li>
+                        <li>互動訊息發言者統一為「互動」</li>
+                        <li>🎮 <strong>猜拳</strong> — 剪刀石頭布挑戰，等待對手回應，結果公告到討論區，名單旁顯示戰績</li>
+                    </ul>
+                </div>
+
+                <div class="dev-section">
+                    <h4>討論區增強</h4>
+                    <ul>
+                        <li>Markdown 語法支援（粗體、斜體、刪除線、程式碼、超連結）</li>
+                        <li>表情符號選擇器 — 90 個常用 emoji</li>
+                        <li>圖片上傳貼圖功能</li>
+                        <li>ℹ Tips 提示面板 — 顯示 @tag 與 Markdown 語法說明</li>
+                        <li>Ticket 討論區專屬：下載討論紀錄為 .txt</li>
+                    </ul>
+                </div>
+
+                <div class="dev-section">
+                    <h4>畫布改進</h4>
+                    <ul>
+                        <li>🧹 橡皮擦 — 可調大小，動態圓形外框游標顯示擦除範圍</li>
+                        <li>畫筆座標修正（CSS/Canvas 像素 scale factor）</li>
+                    </ul>
+                </div>
+
+                <div class="dev-section">
+                    <h4>邀請功能</h4>
+                    <ul>
+                        <li>輸入多筆 Email，產生含直連 URL 的邀請文字供複製</li>
+                        <li>Email 在 URL 中以 Base64 編碼，避免明文暴露</li>
+                        <li>收到連結者開啟後自動帶入暱稱、直接加入討論區</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="dev-day">
+                <h3>📌 Day 3 — 新 Tab 與資料管理</h3>
+
+                <div class="dev-section">
+                    <h4>🔮 運勢（新 Tab）</h4>
+                    <ul>
+                        <li>六十甲子籤完整收錄（來源：北港朝天宮）</li>
+                        <li>籤筒搖晃動畫 → 金色籤滑出 → 運勢卡淡入</li>
+                        <li>顯示籤號天干地支、運勢等級（彩色標籤）、四句籤詩、白話解籤</li>
+                        <li>所有人同步看到相同結果，動畫結束後才發送討論通知</li>
+                    </ul>
+                </div>
+
+                <div class="dev-section">
+                    <h4>🎰 樂透選改進</h4>
+                    <ul>
+                        <li>新增轉盤旋轉動畫，所有人同步觀看</li>
+                        <li>討論通知延遲到動畫結束後才顯示</li>
+                    </ul>
+                </div>
+
+                <div class="dev-section">
+                    <h4>🎨 畫布快照系統</h4>
+                    <ul>
+                        <li><strong>儲存畫布</strong> — 保存當前畫面，縮圖排列在畫布下方</li>
+                        <li><strong>點擊縮圖</strong> — 放大預覽 modal</li>
+                        <li><strong>下載成 PNG</strong> — 匯出為圖片檔</li>
+                        <li><strong>重現畫布</strong> — 清除當前內容，載入選取的快照</li>
+                    </ul>
+                </div>
+
+                <div class="dev-section">
+                    <h4>📝 Ticket 討論區 Memo 功能</h4>
+                    <ul>
+                        <li>討論輸入旁新增 Memo 按鈕（僅 Ticket 討論區顯示）</li>
+                        <li>文字渲染成圖片卡片，排列在下方</li>
+                        <li>點擊放大檢視，可刪除</li>
+                        <li>討論區僅顯示系統訊息通知</li>
+                    </ul>
+                </div>
+
+                <div class="dev-section">
+                    <h4>離開討論區確認</h4>
+                    <ul>
+                        <li>最後一人離開時跳出確認提醒：所有紀錄將被刪除</li>
+                        <li>進入新討論區時清空畫布快照、運勢狀態等前端資料</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="dev-day">
+                <h3>🎨 UI 主題化</h3>
+                <div class="dev-section">
+                    <h4>全站紫色漸層主題</h4>
+                    <ul>
+                        <li>背景採用淡紫色漸層 (#f5f3ff → #ede9fe)</li>
+                        <li>所有容器改為白色圓角卡片 + 陰影，無邊框</li>
+                        <li>標題文字使用紫色漸層 (#667eea → #764ba2)</li>
+                        <li>按鈕統一紫色漸層，hover 加深 + 陰影</li>
+                        <li>Tab、輸入框、邊框統一紫色調</li>
+                        <li>輸入框 focus 狀態加紫色光暈</li>
+                        <li>開發歷程按鈕固定右下角</li>
+                    </ul>
+                </div>
+                <div class="dev-section">
+                    <h4>大廳 UX 優化</h4>
+                    <ul>
+                        <li>建立流程整合為「建立討論區」按鈕 + Modal 彈窗</li>
+                        <li>Modal 內可切換 Ticket 討論區 / Normal 討論區</li>
+                        <li>主畫面輸入格改為討論區搜尋（輸入 ≥ 2 字元自動篩選）</li>
+                        <li>建立 Tab 未選中顏色調亮，hover 回饋優化</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="dev-day">
+                <h3>📅 Day 4 — 一番賞抽獎討論區</h3>
+                <div class="dev-section">
+                    <h4>🎰 一番賞抽獎討論區（新房型）</h4>
+                    <ul>
+                        <li>新增第三種討論區類型「一番賞抽獎 討論區」</li>
+                        <li>一番賞房間只顯示「討論」和「抽賞」兩個 Tab</li>
+                        <li>建立抽賞：設定名稱、多個獎賞（名稱+數量）、每 IP 抽獎上限</li>
+                        <li>抽賞列表：顯示所有抽賞卡片，含剩餘獎品統計</li>
+                        <li>抽賞詳情：獎賞表格含剩餘數量，抽獎 + 刪除按鈕</li>
+                        <li>摸彩動畫：彩球跳動 → 中獎球彈出 → 顯示結果</li>
+                        <li>結果同步到討論區（動畫結束後才顯示）</li>
+                        <li>IP 抽獎次數限制 + 獎品抽完提示</li>
+                        <li>只有建立者可以刪除抽賞</li>
+                        <li>新加入者自動同步抽賞資料</li>
+                    </ul>
+                </div>
+
+                <div class="dev-section">
+                    <h4>🎲 畫布隨機線圖</h4>
+                    <ul>
+                        <li>畫布工具列新增「隨機線圖」按鈕</li>
+                        <li>內建 20 種線稿（貓、花、星星、房子、魚、蝴蝶、樹、愛心、太陽、月亮、雲朵、雨傘、鑽石、音符、杯子、船、鈴鐺、蘋果、閃電等）</li>
+                        <li>所有人同步可見，可在線稿上繼續塗鴉</li>
+                    </ul>
+                </div>
+
+                <div class="dev-section">
+                    <h4>🔔 新訊息通知</h4>
+                    <ul>
+                        <li>討論區有新訊息時，頁面標題閃爍「💬 (N) 新訊息！」</li>
+                        <li>搭配音效提示（Web Audio API 合成，無需音效檔案）</li>
+                        <li>僅在分頁不在前景時觸發（Page Visibility API）</li>
+                        <li>不通知自己發的訊息和系統訊息（JOIN/LEAVE）</li>
+                        <li>累計未讀數顯示在標題中，回到分頁自動恢復原標題</li>
+                        <li>100% 相容任何環境，不依賴 HTTPS</li>
+                    </ul>
+                </div>
+
+                <div class="dev-section">
+                    <h4>🎨 主題切換系統</h4>
+                    <ul>
+                        <li>CSS 全面改用 Custom Properties（CSS 變數）</li>
+                        <li>支援主題切換：💜 寧靜 / 🔥 火焰 / 🌿 青草 / 🌊 浪花 / 🌸 櫻花綻放</li>
+                        <li>火焰主題：深色背景、橙紅漸層、暗色卡片、流動火焰邊框、火星粒子</li>
+                        <li>青草主題：藍天白雲頂部、青草大地底部、飄動雲朵動畫、微風吹拂草地動畫、翡翠綠主色</li>
+                        <li>浪花主題：淡藍海洋漸變淺黃沙灘、雙層波浪拍打動畫、白色浪花泡沫、淡藍主色</li>
+                        <li>幾何主題：白色背景、20 個粒子做物理反彈運動、200px 內自動連線、灰藍主色</li>
+                        <li>櫻花綻放：粉色漸層背景、右側 CSS 繪製櫻花樹（樹幹+枝幹+花叢）、35 片花瓣 Canvas 動畫隨風往左飄落（Bezier 曲線花瓣形狀、自旋+擺動）</li>
+                        <li>主題選擇記憶在 localStorage，重整不會重置</li>
+                        <li>切換按鈕位於右下角（開發歷程上方）</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="dev-day dev-tech">
+                <h3>🛠️ 技術架構</h3>
+                <table class="dev-tech-table">
+                    <tr><td>框架</td><td>Spring Boot 2.7.18 + Java 8</td></tr>
+                    <tr><td>即時通訊</td><td>STOMP over SockJS (WebSocket)</td></tr>
+                    <tr><td>前端模板</td><td>Thymeleaf</td></tr>
+                    <tr><td>建構工具</td><td>Gradle Kotlin DSL</td></tr>
+                    <tr><td>資料儲存</td><td>ConcurrentHashMap（記憶體內）</td></tr>
+                    <tr><td>前端 JS</td><td>~2000 行</td></tr>
+                    <tr><td>CSS</td><td>~2100 行</td></tr>
+                    <tr><td>後端 Controller</td><td>10 個</td></tr>
+                    <tr><td>後端 Service</td><td>7 個</td></tr>
+                </table>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.6.1/sockjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
+<script src="/js/chat.js"></script>
+</body>
+</html>
